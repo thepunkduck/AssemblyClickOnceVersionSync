@@ -4,7 +4,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Windows.Forms;
 
 namespace ACOVersionSync
 {
@@ -15,6 +14,7 @@ namespace ACOVersionSync
         {
             int appRev = 0;
             string appVers = null;
+
 
             try
             {
@@ -59,8 +59,9 @@ namespace ACOVersionSync
                 {
                     _initRandomDescription();
                     desc = _getRandomDescriptionTitle();
-                    Console.WriteLine("PUBLISH:" + desc);
+                    Console.WriteLine("PUBLISH VERSION NAME: " + desc);
                 }
+
 
                 // SYNCRONIZE to CLICK ONCE
                 string tmpFile = Path.GetTempFileName();
@@ -110,6 +111,7 @@ namespace ACOVersionSync
             return;
         }
 
+
         static string aTitle = null;
         static string aProduct = null;
         static string aDescription = null;
@@ -117,30 +119,19 @@ namespace ACOVersionSync
 
         private static void _initRandomDescription()
         {
-            string address = "https://www.theguardian.com/au";
-            //Create the WebBrowser control
-            WebBrowser wb = new WebBrowser();
-            //Add a new event to process document when download is completed   
-            wb.DocumentCompleted += new WebBrowserDocumentCompletedEventHandler(DisplayText);
-            //Download the webpage
-            wb.Url = new Uri(address);
-            while (wb.ReadyState != WebBrowserReadyState.Complete)
-            { Application.DoEvents(); }
-        }
-
-        private static void DisplayText(object sender, WebBrowserDocumentCompletedEventArgs e)
-        {
-            WebBrowser wb = (WebBrowser)sender;
-            wb.Document.ExecCommand("SelectAll", false, null);
-            wb.Document.ExecCommand("Copy", false, null);
-            string pageTEXT = Clipboard.GetText();
-            var lines = pageTEXT.Split("\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+            string url = @"https://www.theguardian.com/au";
+            var html = PageScraper.Read(url);
+            var ptxt = PageScraper.PlainText(html);
+            hash = new HashSet<string>();
+            var lines = ptxt.Split("\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
             bool start = false;
             foreach (var item in lines)
             {
+                if (string.IsNullOrWhiteSpace(item)) continue;
+                if (item.StartsWith("<")) continue;
                 if (item.StartsWith("News, sport and opinion"))
                     start = true;
-                else if (start)
+                if (start)
                 {
                     var words = item.Split(" \t".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
                     foreach (var word in words)
@@ -148,13 +139,13 @@ namespace ACOVersionSync
                         string str = word;
                         Regex rgx = new Regex("[^a-zA-Z0-9 -]");
                         str = rgx.Replace(str, "");
+                        if (str.Any(c => char.IsDigit(c)))
+                            continue;
                         if (str.Length > 4) hash.Add(str);
                     }
                 }
             }
-
         }
-
         static string _getRandomDescriptionTitle()
         {
             // get 2 random 
@@ -163,7 +154,6 @@ namespace ACOVersionSync
             TextInfo textInfo = new CultureInfo("en-US", false).TextInfo;
             return (textInfo.ToTitleCase(str1) + " " + textInfo.ToTitleCase(str2));
         }
-
 
         static void _updateAssemblyRecord()
         {
