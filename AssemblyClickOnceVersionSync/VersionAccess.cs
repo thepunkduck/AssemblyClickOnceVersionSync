@@ -23,6 +23,9 @@ namespace ACOVersionSync
         {
             try
             {
+                if (args.Length == 1 && args[0] == "test") { State = true;
+                    IsTest = true;
+                    return;}
                 if (args.Length < 1) return;
                 if (args[0] == "Debug") return;
 
@@ -175,7 +178,8 @@ namespace ACOVersionSync
         // do this if publish
         private void _updateAssemblyRecord()
         {
-            string path = @"C:\Users\James\Documents\Visual Studio 2017\assembly_descriptions.txt";
+            string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "assembly_descriptions.txt");
             string record = AssemblyTitle + ", " + AssemblyProduct + ", \"" + AssemblyDescription + "\", " + DateTime.Now.ToString(CultureInfo.InvariantCulture) + ", " + AssemblyVersion + Environment.NewLine;
             Console.WriteLine(record);
             File.AppendAllText(path, record);
@@ -184,6 +188,7 @@ namespace ACOVersionSync
 
         public bool State { get; }
         public bool IsPublish { get; }
+        public bool IsTest { get; }
         public string AssemblyTitle { get; }
         public string AssemblyProduct { get; }
         public string AssemblyDescription { get; private set; }

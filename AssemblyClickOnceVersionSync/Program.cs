@@ -22,7 +22,7 @@ namespace ACOVersionSync
 
                 var csproj = args[1];
                 var config = args[0];
-                bool isPub = (config.StartsWith("pub", true, System.Globalization.CultureInfo.InvariantCulture));
+                bool isPub = config.StartsWith("pub", true, CultureInfo.InvariantCulture);
                 Console.WriteLine("ARG 0:" + args[0]);
                 Console.WriteLine("ARG 1:" + args[1]);
 
@@ -122,7 +122,7 @@ namespace ACOVersionSync
             string url = @"https://www.theguardian.com/au";
             var html = PageScraper.Read(url);
             var ptxt = PageScraper.PlainText(html);
-            hash = new HashSet<string>();
+            _hash = new HashSet<string>();
             var lines = ptxt.Split("\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
             bool start = false;
             foreach (var item in lines)
@@ -141,34 +141,37 @@ namespace ACOVersionSync
                         str = rgx.Replace(str, "");
                         if (str.Any(c => char.IsDigit(c)))
                             continue;
-                        if (str.Length > 4) hash.Add(str);
+                        if (str.Length > 4) _hash.Add(str);
                     }
                 }
             }
         }
-        static string _getRandomDescriptionTitle()
+
+        private static string _getRandomDescriptionTitle()
         {
             // get 2 random 
-            string str1 = hash.ElementAt(rand.Next(hash.Count));
-            string str2 = hash.ElementAt(rand.Next(hash.Count));
+            string str1 = _hash.ElementAt(_rand.Next(_hash.Count));
+            string str2 = _hash.ElementAt(_rand.Next(_hash.Count));
             TextInfo textInfo = new CultureInfo("en-US", false).TextInfo;
-            return (textInfo.ToTitleCase(str1) + " " + textInfo.ToTitleCase(str2));
+            return textInfo.ToTitleCase(str1) + " " + textInfo.ToTitleCase(str2);
         }
 
-        static void _updateAssemblyRecord()
+        private static void _updateAssemblyRecord()
         {
             // AssemblyTitle, AssemblyProduct, AssemblyDescription, Date, AssemblyVersion
-            string path = @"C:\Users\James\Documents\Visual Studio 2017\assembly_descriptions.txt";
-            string record = aTitle + ", " + aProduct + ", \"" + aDescription + "\", " + DateTime.Now.ToString() + ", " + aVersion + Environment.NewLine;
+            string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "assembly_descriptions.txt");
+            string record = aTitle + ", " + aProduct + ", \"" + aDescription + "\", " + DateTime.Now.ToString(CultureInfo.InvariantCulture) + ", " + aVersion + Environment.NewLine;
             Console.WriteLine(record);
             File.AppendAllText(path, record);
         }
 
 
 
-        static Random rand = new Random();
-        static HashSet<string> hash = new HashSet<string>();
-        static string _getValue(string line, string key)
+        static readonly Random _rand = new Random();
+        static HashSet<string> _hash = new HashSet<string>();
+
+        private static string _getValue(string line, string key)
         {
             var start = @"<" + key + ">";
             var end = @"</" + key + ">";
@@ -177,9 +180,9 @@ namespace ACOVersionSync
             {
                 line = line.Substring(start.Length);
                 line = line.Substring(0, line.Length - end.Length);
-                return (line);
+                return line;
             }
-            return (null);
+            return null;
         }
 
 
@@ -193,14 +196,15 @@ namespace ACOVersionSync
                 if (line.StartsWith(start))
                 {
                     string value = line.Substring(start.Length, line.Length - 3 - start.Length);
-                    return (value);
+                    return value;
                 }
             }
             catch
             {
-
+                // ignored
             }
-            return (null);
+
+            return null;
         }
     }
 }
