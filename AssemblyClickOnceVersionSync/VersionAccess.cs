@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ACOVersionSync
@@ -23,16 +24,23 @@ namespace ACOVersionSync
         {
             try
             {
-                if (args.Length == 1 && args[0] == "test") { State = true;
+                if (args.Length == 1 && args[0] == "test")
+                {
+                    State = true;
                     IsTest = true;
-                    return;}
+                    return;
+                }
+                Console.WriteLine("VersionAccess");
+
                 if (args.Length < 1) return;
                 if (args[0] == "Debug") return;
 
-                var config = args[0];
-                IsPublish = (config.StartsWith("pub", true, CultureInfo.InvariantCulture));
-
+                Console.WriteLine("ARG0: " + args[0]);
+                Console.WriteLine("ARG1: " + args[1]);
+                IsPublish = args[0].ToLower().Contains("publish");
+                Console.WriteLine("publish?: " + IsPublish);
                 var csproj = args[1];
+                Console.WriteLine("proj: " + csproj);
                 _projFolder = Path.GetDirectoryName(csproj);
                 _assInfoFile = Path.Combine(_projFolder ?? string.Empty, "Properties\\AssemblyInfo.cs");
                 _assInfoBk = Path.Combine(_projFolder ?? string.Empty, "Properties\\AssemblyInfo.backup_cs");
@@ -55,7 +63,7 @@ namespace ACOVersionSync
             catch (Exception ex)
             {
                 Console.WriteLine("sync failed!");
-                Console.WriteLine(ex.Message);
+                Console.WriteLine("***** " + ex.Message);
             }
         }
 
@@ -108,7 +116,7 @@ namespace ACOVersionSync
             fileStream.Close();
 
             AssemblyVersion = ClickOnceVersion;
-            
+
             // finally replace assInfo file
             fi = new FileInfo(tmpFile);
             long newLen = fi.Length;
@@ -118,7 +126,7 @@ namespace ACOVersionSync
                 if (!File.Exists(_assInfoBk)) File.Copy(_assInfoFile, _assInfoBk);
 
                 File.Copy(tmpFile, _assInfoFile, true);
-                Console.WriteLine("sync info file:" + _assInfoFile);
+                Console.WriteLine("sync info file: " + _assInfoFile);
             }
 
             return (true);
@@ -159,17 +167,185 @@ namespace ACOVersionSync
         {
             if (_projFolder == null) return;
             string path = Path.Combine(_projFolder, "ChangeLog.txt");
-            string dateStr = DateTime.Now.ToString("dd/MM/yyyy");
-            File.AppendAllText(path, Environment.NewLine + dateStr + "  " +
-                                     ClickOnceVersion +
-                                     " \"" + AssemblyDescription + "\"" + Environment.NewLine);
 
+            _sanitizeChangeLog(path);
+
+            // Prepend new text
+            string dateStr = DateTime.Now.ToString("dd/MM/yyyy");
+            var entry = dateStr + "  " + ClickOnceVersion + " \"" + AssemblyDescription + "\"" + Environment.NewLine;
             if (!string.IsNullOrWhiteSpace(notes))
             {
                 var indent = "            ";
                 notes = notes.Replace("\r\n", "\n");
                 var result = indent + notes.Replace("\n", "\r\n" + indent);
-                File.AppendAllText(path, result + Environment.NewLine);
+                entry += (result + Environment.NewLine);
+            }
+
+            string existingContent = File.ReadAllText(path);
+            string updatedContent = entry + Environment.NewLine + existingContent;
+
+            // Write updated content back to the file
+            File.WriteAllText(path, updatedContent);
+        }
+
+        class ChangeItem
+        {
+            public DateTime Date;
+            public string Header;
+            public string VersionNum;
+            public string VersionName;
+            public List<string> Lines = new List<string>();
+            public DateTime SortableDateTime;
+            public ChangeItem(string line, DateTime date, string versionNum, string versionName)
+            {
+                Header = line;
+                Date = date;
+                VersionNum = versionNum;
+                VersionName = versionName;
+
+                try
+                {
+                    var tmp = VersionNum.Replace(".", "");
+                    var res = int.Parse(tmp);
+                    SortableDateTime = Date.AddMilliseconds(res);
+                }
+                catch
+                {
+                    SortableDateTime = Date;
+                }
+            }
+
+
+
+
+            internal void AddLine(string line)
+            {
+                if (line == null) return;
+                Lines.Add(line);
+            }
+
+            internal void TrimLines()
+            {
+                if (Lines.Count == 0) return;
+
+                bool trimmed = true;
+                while (trimmed)
+                {
+                    trimmed = false;
+                    var line = Lines.FirstOrDefault();
+                    if (line != null && string.IsNullOrWhiteSpace(line))
+                    {
+                        Lines.RemoveAt(0);
+                        trimmed = true;
+                    }
+                    line = Lines.LastOrDefault();
+                    if (line != null && string.IsNullOrWhiteSpace(line))
+                    {
+                        Lines.RemoveAt(Lines.Count - 1);
+                        trimmed = true;
+                    }
+                }
+            }
+        }
+        private void _sanitizeChangeLog(string path)
+        {
+            try
+            {
+                // read file
+                var lines = File.ReadAllLines(path);
+
+                List<ChangeItem> changes = new List<ChangeItem>();
+                ChangeItem ci = null;
+                // split by date lines
+                foreach (var line in lines)
+                {
+                    if (_isHeader(line, out DateTime date, out string versionNum, out string versionName))
+                    {
+                        if (string.IsNullOrWhiteSpace(versionName)) 
+                            versionName = _getRandomDescription();
+                        ci = new ChangeItem(line, date, versionNum, versionName);
+                        changes.Add(ci);
+                    }
+                    else if (ci != null)
+                    {
+                        ci.AddLine(line);
+                    }
+                }
+
+
+                foreach (var c in changes) c.TrimLines();
+                // sort by date 
+                changes = changes.OrderByDescending(c => c.SortableDateTime).ToList();
+
+                // sanitize?
+                // if version and name same, merge them
+                var res = changes.GroupBy(c => c.VersionNum + c.VersionName);
+                
+                foreach (IGrouping<string, ChangeItem> item in res)
+                {
+                    ChangeItem c0 = item.Last();
+                    // merge others in
+                    var rev = item.Reverse();
+                    foreach (ChangeItem c in rev)
+                    {
+                        if (c0 == c) continue;
+                        foreach(var line in c.Lines) 
+                            c0.AddLine(line);
+                        c.Header = null; // remove!
+                    }
+                }
+
+                changes = changes.Where(c => c.Header != null).ToList();
+                // output with latest changes at top
+                // spaces between
+
+                StringBuilder sb = new StringBuilder();
+                foreach (var c in changes)
+                {
+                    string dateStr = c.Date.ToString("dd/MM/yyyy");
+                    var entry = dateStr + "  " + c.VersionNum + " \"" + c.VersionName + "\"";
+                    sb.AppendLine(entry);
+                    foreach (var line in c.Lines)
+                        sb.AppendLine(line);
+                    sb.AppendLine();
+                }
+
+                File.WriteAllText(path, sb.ToString());
+            }
+            catch
+            {
+
+            }
+
+        }
+
+        private static bool _isHeader(string line, out DateTime date, out string versionNum, out string versionName)
+        {
+            date = DateTime.MinValue;
+            versionName = string.Empty;
+            versionNum = string.Empty;
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(line)) return false;
+                if (line.Length < 12) return false;
+                if (line[2] != '/') return false;
+                string[] formats = { "dd/MM/yyyy" };
+                var tmp = line.Substring(0, 10).Trim();
+                DateTime.TryParseExact(tmp, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result);
+                date = result.Date;
+
+                tmp = line.Substring(10).Trim();
+                var idx = tmp.IndexOf("\"");
+                versionNum = tmp.Substring(0, idx).Trim();
+
+                versionName = tmp.Substring(idx).Trim();
+                versionName = versionName.Trim("\"".ToCharArray());
+                return true;
+            }
+            catch
+            {
+                return false;
             }
 
         }
@@ -180,7 +356,14 @@ namespace ACOVersionSync
         {
             string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "assembly_descriptions.txt");
-            string record = AssemblyTitle + ", " + AssemblyProduct + ", \"" + AssemblyDescription + "\", " + DateTime.Now.ToString(CultureInfo.InvariantCulture) + ", " + AssemblyVersion + Environment.NewLine;
+
+            string record = DateTime.Now.ToString(CultureInfo.InvariantCulture);
+            record += Environment.NewLine;
+            record += $"AssemblyTitle:{AssemblyTitle}  AssemblyProduct:{AssemblyProduct}  AssemblyDescription:{AssemblyDescription}";
+            record += Environment.NewLine;
+            record += $"AssemblyVersion:{AssemblyVersion}";
+            record += Environment.NewLine;
+
             Console.WriteLine(record);
             File.AppendAllText(path, record);
         }

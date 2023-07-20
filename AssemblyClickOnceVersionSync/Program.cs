@@ -18,6 +18,7 @@ namespace ACOVersionSync
 
             try
             {
+                Console.WriteLine("VERSIONER");
                 if (args[0] == "Debug") return;
 
                 var csproj = args[1];
@@ -66,7 +67,6 @@ namespace ACOVersionSync
                 // SYNCRONIZE to CLICK ONCE
                 string tmpFile = Path.GetTempFileName();
                 FileInfo fi = new FileInfo(tmpFile);
-                long initLen = fi.Length;
                 var fileStream = fi.Open(FileMode.Create, FileAccess.Write, FileShare.None);
                 using (StreamWriter streamWriter = new StreamWriter(fileStream, System.Text.Encoding.UTF8))
                 {
