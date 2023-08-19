@@ -425,8 +425,7 @@ namespace ACOVersionSync
             {
                 if (string.IsNullOrWhiteSpace(item)) continue;
                 if (item.StartsWith("<")) continue;
-                if (item.StartsWith("News, sport and opinion"))
-                    start = true;
+                if (item.Length > 50) start = true; 
                 if (start)
                 {
                     var words = item.Split(" \t".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
