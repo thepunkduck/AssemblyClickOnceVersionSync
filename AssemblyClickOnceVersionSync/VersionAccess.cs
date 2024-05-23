@@ -35,17 +35,34 @@ namespace ACOVersionSync
                 if (args.Length < 1) return;
                 if (args[0] == "Debug") return;
 
-                Console.WriteLine("ARG0: " + args[0]);
-                Console.WriteLine("ARG1: " + args[1]);
-                IsPublish = args[0].ToLower().Contains("publish");
+                string csproj;
+                if (args[0] == "POST")
+                {
+                    IsPostBuild = true;
+                    Console.WriteLine("ARG0: " + args[0]);
+                    Console.WriteLine("ARG1: " + args[1]);
+                    Console.WriteLine("ARG2: " + args[2]);
+                    IsPublish = args[1].ToLower().Contains("publish");
+                    csproj = args[2];
+
+                }
+                else
+                {
+                    Console.WriteLine("ARG0: " + args[0]);
+                    Console.WriteLine("ARG1: " + args[1]);
+                    IsPublish = args[0].ToLower().Contains("publish");
+                    csproj = args[1];
+                }
+
                 Console.WriteLine("publish?: " + IsPublish);
-                var csproj = args[1];
                 Console.WriteLine("proj: " + csproj);
+
                 _projFolder = Path.GetDirectoryName(csproj);
                 _assInfoFile = Path.Combine(_projFolder ?? string.Empty, "Properties\\AssemblyInfo.cs");
                 _assInfoBk = Path.Combine(_projFolder ?? string.Empty, "Properties\\AssemblyInfo.backup_cs");
 
                 ClickOnceVersion = _getClickOnceVersion(csproj);
+                PublishFolder = _getPublishFolder(csproj);
 
                 var lines = File.ReadAllLines(_assInfoFile, System.Text.Encoding.UTF8);
                 foreach (var item in lines)
@@ -81,6 +98,14 @@ namespace ACOVersionSync
             }
 
             return _appVers + _appRev;
+        }
+
+        private string _getPublishFolder(string projectFile)
+        {
+            // decode current click once version from csproj file... 
+            var lines = File.ReadAllLines(projectFile);
+            string pubPath = lines.Select(l => _getValue(l, "PublishUrl")).FirstOrDefault(v => v != null);
+            return pubPath;
         }
 
         private bool _overwriteAssemblyVersion(string description)
@@ -162,6 +187,38 @@ namespace ACOVersionSync
             _updateChangeLog(notes);
             return state;
         }
+
+
+        public void RemoveOldApplicationFilesFromPublish()
+        {
+            if (PublishFolder != null)
+            {
+
+                var appFilesDir = Path.Combine(PublishFolder, "Application Files");
+                // remove the oldest ones
+                // Get all subdirectories
+                DirectoryInfo directoryInfo = new DirectoryInfo(appFilesDir);
+                DirectoryInfo[] subdirectories = directoryInfo.GetDirectories();
+
+                // Sort subdirectories by creation time in descending order (newest first)
+                var sortedSubdirectories = subdirectories.OrderByDescending(d => d.CreationTime).ToList();
+
+                // Check if there are more than 2 subdirectories
+                if (sortedSubdirectories.Count > 2)
+                {
+                    // Get all but the newest 2 subdirectories
+                    var subdirectoriesToDelete = sortedSubdirectories.Skip(2);
+
+                    // Delete the old subdirectories
+                    foreach (var subdirectory in subdirectoriesToDelete)
+                    {
+                        Console.WriteLine($"Deleting directory: {subdirectory.FullName}");
+                        subdirectory.Delete(true); // Pass 'true' to also delete the contents
+                    }
+                }
+            }
+        }
+
 
         private void _updateChangeLog(string notes)
         {
@@ -261,7 +318,7 @@ namespace ACOVersionSync
                 {
                     if (_isHeader(line, out DateTime date, out string versionNum, out string versionName))
                     {
-                        if (string.IsNullOrWhiteSpace(versionName)) 
+                        if (string.IsNullOrWhiteSpace(versionName))
                             versionName = _getRandomDescription();
                         ci = new ChangeItem(line, date, versionNum, versionName);
                         changes.Add(ci);
@@ -280,7 +337,7 @@ namespace ACOVersionSync
                 // sanitize?
                 // if version and name same, merge them
                 var res = changes.GroupBy(c => c.VersionNum + c.VersionName);
-                
+
                 foreach (IGrouping<string, ChangeItem> item in res)
                 {
                     ChangeItem c0 = item.Last();
@@ -289,7 +346,7 @@ namespace ACOVersionSync
                     foreach (ChangeItem c in rev)
                     {
                         if (c0 == c) continue;
-                        foreach(var line in c.Lines) 
+                        foreach (var line in c.Lines)
                             c0.AddLine(line);
                         c.Header = null; // remove!
                     }
@@ -371,6 +428,7 @@ namespace ACOVersionSync
 
         public bool State { get; }
         public bool IsPublish { get; }
+        public bool IsPostBuild { get; }
         public bool IsTest { get; }
         public string AssemblyTitle { get; }
         public string AssemblyProduct { get; }
@@ -378,19 +436,21 @@ namespace ACOVersionSync
         public string AssemblyVersion { get; private set; }
 
         public string ClickOnceVersion { get; }
+        public string PublishFolder { get; }
 
         private static string _getValue(string line, string key)
         {
-            var start = @"<" + key + ">";
-            var end = @"</" + key + ">";
             line = line.Trim();
-            if (line.StartsWith(start) && line.EndsWith(end))
-            {
-                line = line.Substring(start.Length);
-                line = line.Substring(0, line.Length - end.Length);
-                return (line);
-            }
-            return (null);
+
+            var start = @"<" + key + ">";
+            if (!line.StartsWith(start)) return null;
+
+            var end = @"</" + key + ">";
+            if (!line.EndsWith(end)) return null;
+
+            line = line.Substring(start.Length);
+            line = line.Substring(0, line.Length - end.Length);
+            return line;
         }
 
         private static string _getAssemblyInfoValue(string line, string key)
@@ -425,7 +485,7 @@ namespace ACOVersionSync
             {
                 if (string.IsNullOrWhiteSpace(item)) continue;
                 if (item.StartsWith("<")) continue;
-                if (item.Length > 50) start = true; 
+                if (item.Length > 50) start = true;
                 if (start)
                 {
                     var words = item.Split(" \t".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
@@ -449,5 +509,6 @@ namespace ACOVersionSync
             TextInfo textInfo = new CultureInfo("en-US", false).TextInfo;
             return (textInfo.ToTitleCase(str1) + " " + textInfo.ToTitleCase(str2));
         }
+
     }
 }
