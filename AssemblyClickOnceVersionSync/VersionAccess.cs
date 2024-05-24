@@ -193,28 +193,36 @@ namespace ACOVersionSync
         {
             if (PublishFolder != null)
             {
-
-                var appFilesDir = Path.Combine(PublishFolder, "Application Files");
-                // remove the oldest ones
-                // Get all subdirectories
-                DirectoryInfo directoryInfo = new DirectoryInfo(appFilesDir);
-                DirectoryInfo[] subdirectories = directoryInfo.GetDirectories();
-
-                // Sort subdirectories by creation time in descending order (newest first)
-                var sortedSubdirectories = subdirectories.OrderByDescending(d => d.CreationTime).ToList();
-
-                // Check if there are more than 2 subdirectories
-                if (sortedSubdirectories.Count > 2)
+                try
                 {
-                    // Get all but the newest 2 subdirectories
-                    var subdirectoriesToDelete = sortedSubdirectories.Skip(2);
+                    var appFilesDir = Path.Combine(PublishFolder, "Application Files");
 
-                    // Delete the old subdirectories
-                    foreach (var subdirectory in subdirectoriesToDelete)
+                    // remove the oldest ones
+                    // Get all subdirectories
+                    DirectoryInfo directoryInfo = new DirectoryInfo(appFilesDir);
+                    DirectoryInfo[] subdirectories = directoryInfo.GetDirectories();
+
+                    // Sort subdirectories by creation time in descending order (newest first)
+                    var sortedSubdirectories = subdirectories.OrderByDescending(d => d.CreationTime).ToList();
+
+                    // Check if there are more than 2 subdirectories
+                    if (sortedSubdirectories.Count > 1)
                     {
-                        Console.WriteLine($"Deleting directory: {subdirectory.FullName}");
-                        subdirectory.Delete(true); // Pass 'true' to also delete the contents
+                        // Get all but the newest 1 subdirectories
+                        var subdirectoriesToDelete = sortedSubdirectories.Skip(2);
+
+                        // Delete the old subdirectories
+                        foreach (var subdirectory in subdirectoriesToDelete)
+                        {
+                            Console.WriteLine($"Deleting directory: {subdirectory.FullName}");
+                            subdirectory.Delete(true); // Pass 'true' to also delete the contents
+                        }
                     }
+                }
+                catch(Exception ex)
+                {
+
+
                 }
             }
         }
